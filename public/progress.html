@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Progress Page</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <nav>
+      <button onclick="navigateTo('index')">Message</button>
+      <button onclick="navigateTo('goal')">Goal</button>
+      <button onclick="navigateTo('progress')">Update</button>
+    </nav>
+
+    <div id="progress-bar-container">
+      <label for="progress-bar">Project Progress:</label>
+      <div id="progress-bar">
+        <div id="progress" style="width: 50%;">50%</div>
+      </div>
+    </div>
+
+    <h2>Task Distribution</h2>
+    <ul id="task-list">
+      <!-- Tasks and contributions will be displayed here -->
+    </ul>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

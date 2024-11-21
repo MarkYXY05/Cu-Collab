@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Message Page</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Navigation Bar -->
+    <nav>
+      <button onclick="navigateTo('index')">Message</button>
+      <button onclick="navigateTo('goal')">Goal</button>
+      <button onclick="navigateTo('progress')">Update</button>
+    </nav>
+
+    <!-- Message Form -->
+    <form id="message-form">
+      <input type="text" id="message-input" placeholder="Enter your message here" required>
+      <button type="submit">Post</button>
+    </form>
+
+    <!-- Messages Container -->
+    <div id="messages-container">
+      <!-- Messages will appear here -->
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
