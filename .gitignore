@@ -1,2 +1,2 @@
-node_modules
-.DS_store
+backend/node_modules
+backend/config

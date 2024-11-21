@@ -1,20 +1,16 @@
 {
-  "name": "cu-collaborate-project",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "dev": "ts-node server.ts"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "body-parser": "^1.20.3",
-    "express": "^4.21.1"
-  },
-  "devDependencies": {
-    "@types/body-parser": "^1.19.5",
-    "@types/express": "^5.0.0"
-  }
+    "private": true,
+    "license": "MIT",
+    "scripts": {
+        "build": "turbo run build",
+        "dev": "turbo run dev",
+        "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    },
+    "devDependencies": {
+        "eslint": "^8.48.0",
+        "prettier": "^3.0.3",
+        "turbo": "latest"
+    },
+    "packageManager": "pnpm@8.6.10",
+    "name": "full-stack"
 }
