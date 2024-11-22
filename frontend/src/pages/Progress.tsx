@@ -1,15 +1,33 @@
 import React, { useState, useEffect } from "react";
+import { useAuth } from "../components/auth/AuthUserProvider"; // **Added import for authentication**
 
 const Progress: React.FC = () => {
   const [completedGoals, setCompletedGoals] = useState(0);
   const [totalGoals, setTotalGoals] = useState(0);
   const [completedToDos, setCompletedToDos] = useState(0);
   const [totalToDos, setTotalToDos] = useState(0);
+  const { user } = useAuth(); // **Access user information from authentication context**
+  const [token, setToken] = useState<string | null>(null);
+
+  // Fetch the user's token
+  useEffect(() => {
+    if (user) {
+      user.getIdToken().then((token) => setToken(token)); // **Get ID token from user**
+    } else {
+      setToken(null);
+    }
+  }, [user]); // **Re-fetch token when user changes**
 
   useEffect(() => {
     const fetchProgressData = async () => {
+      if (!token) return; // **Return early if no token is available**
+
       try {
-        const response = await fetch("http://localhost:8080/goals");
+        const response = await fetch("http://localhost:8080/goals", {
+          headers: {
+            Authorization: `Bearer ${token}`, // **Added token to request headers**
+          },
+        });
         const data = await response.json();
 
         const totalGoalsCount = data.length;
@@ -33,7 +51,7 @@ const Progress: React.FC = () => {
     };
 
     fetchProgressData();
-  }, []);
+  }, [token]); // **Fetch progress data whenever token updates**
 
   const calculateProgress = (completed: number, total: number): number =>
     total > 0 ? (completed / total) * 100 : 0;

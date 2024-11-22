@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from "react";
 import GoalForm from "../components/GoalForm";
 import GoalList from "../components/GoalList";
+import { useAuth } from "../components/auth/AuthUserProvider";
+import { signInWithGoogle, signOut } from '../firebase';
 
 const Goal: React.FC = () => {
   const [goals, setGoals] = useState<
     { id: string; goal: string; completed: boolean; todos: { text: string; completed: boolean; id: string }[] }[]
   >([]);
+  const { user } = useAuth();
+  const [token, setToken] = useState<string | null>(null);
+
+  // Fetch the user's token on load
+  useEffect(() => {
+    if (user) {
+      user.getIdToken().then((token) => setToken(token));
+    } else {
+      setToken(null);
+    }
+  }, [user]);
 
   // Track selected option
   const [selectedGoalId, setSelectedGoalId] = useState<string>("new");
@@ -13,8 +26,14 @@ const Goal: React.FC = () => {
   // Fetch goals and todos from the backend
   useEffect(() => {
     const fetchGoals = async () => {
+      if (!token) return;
+
       try {
-        const response = await fetch("http://localhost:8080/goals");
+        const response = await fetch("http://localhost:8080/goals", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          }
+        });
         const data = await response.json();
         setGoals(data);
       } catch (error) {
@@ -23,19 +42,25 @@ const Goal: React.FC = () => {
     };
 
     fetchGoals();
-  }, []);
+  }, [token]);
 
    // Toggle completion of a goal
    const handleToggleGoalCompletion = async (id: string, completed: boolean) => {
     try {
       await fetch(`http://localhost:8080/goals/${id}/completion`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+         },
         body: JSON.stringify({ completed }),
       });
   
       // Fetch updated data
-      const response = await fetch("http://localhost:8080/goals");
+      const response = await fetch("http://localhost:8080/goals", {
+        headers: {
+          Authorization: `Bearer ${token}`, // **Ensures updated fetch respects authentication**
+        },
+      });
       const updatedGoals = await response.json();
       setGoals(updatedGoals); // Update local state
     } catch (error) {
@@ -49,12 +74,18 @@ const Goal: React.FC = () => {
       try {
         await fetch(`http://localhost:8080/goals/${goalId}/todos/${todoId}/completion`, {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+           },
           body: JSON.stringify({ completed }),
         });
     
         // Fetch updated data
-        const response = await fetch("http://localhost:8080/goals");
+        const response = await fetch("http://localhost:8080/goals", {
+          headers: {
+            Authorization: `Bearer ${token}`, // **Ensures updated fetch respects authentication**
+          },
+        });
         const updatedGoals = await response.json();
         setGoals(updatedGoals); // Update local state
       } catch (error) {
@@ -64,10 +95,14 @@ const Goal: React.FC = () => {
 
   // Add a new goal
   const handleAddGoal = async (goal: string) => {
+    if (!token) return;
+
     try {
       const response = await fetch("http://localhost:8080/goals", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+         },
         body: JSON.stringify({ goal, todos: [] }),
       });
       const newGoal = await response.json();
@@ -80,10 +115,14 @@ const Goal: React.FC = () => {
 
   // Edit a goal
   const handleEditGoal = async (id: string, updatedGoal: string) => {
+    if (!token) return;
+
     try {
       await fetch(`http://localhost:8080/goals/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+         },
         body: JSON.stringify({ goal: updatedGoal }),
       });
       setGoals(goals.map((goal) => (goal.id === id ? { ...goal, goal: updatedGoal } : goal)));
@@ -94,8 +133,14 @@ const Goal: React.FC = () => {
 
   // Delete a goal
   const handleDeleteGoal = async (id: string) => {
+    if (!token) return;
+
     try {
-      await fetch(`http://localhost:8080/goals/${id}`, { method: "DELETE" });
+      await fetch(`http://localhost:8080/goals/${id}`, { 
+        method: "DELETE",
+        headers: {Authorization: `Bearer ${token}`, 
+      },
+    });
       setGoals(goals.filter((goal) => goal.id !== id));
     } catch (error) {
       console.error("Error deleting goal:", error);
@@ -104,10 +149,13 @@ const Goal: React.FC = () => {
 
   // Add a to-do to a goal
   const handleAddToDo = async (goalId: string, todoText: string) => {
+    if (!token) return;
+
     try {
       const response = await fetch(`http://localhost:8080/goals/${goalId}/todos`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", 
+          Authorization: `Bearer ${token}`, },
         body: JSON.stringify({ text: todoText, completed: false }),
       });
       const newToDo = await response.json();
@@ -123,10 +171,14 @@ const Goal: React.FC = () => {
 
   // Edit a to-do
   const handleEditToDo = async (goalId: string, todoId: string, updatedToDo: string) => {
+    if (!token) return;
+
     try {
       await fetch(`http://localhost:8080/goals/${goalId}/todos/${todoId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+         },
         body: JSON.stringify({ text: updatedToDo }),
       });
       setGoals(
@@ -148,8 +200,15 @@ const Goal: React.FC = () => {
 
   // Delete a to-do
   const handleDeleteToDo = async (goalId: string, todoId: string) => {
+    if (!token) return;
+
     try {
-      await fetch(`http://localhost:8080/goals/${goalId}/todos/${todoId}`, { method: "DELETE" });
+      await fetch(`http://localhost:8080/goals/${goalId}/todos/${todoId}`, { 
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`, 
+        }, 
+      });
       setGoals(
         goals.map((goal) =>
           goal.id === goalId
@@ -164,6 +223,16 @@ const Goal: React.FC = () => {
 
   return (
     <div>
+      <header>
+        {user ? (
+          <div>
+            <p>Welcome, {user.displayName}</p>
+            <button onClick={signOut}>Sign Out</button>
+          </div>
+        ) : (
+          <button onClick={signInWithGoogle}>Sign In with Google</button>
+        )}
+      </header>
       <h1>Goals</h1>
 
       {/* Scroll Menu */}

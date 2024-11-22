@@ -1,5 +1,6 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { initializeApp, cert } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import cors from "cors";
 
@@ -28,19 +29,47 @@ initializeApp({
 });
 const db = getFirestore();
 
+// ==================== AUTHENTICATION MIDDLEWARE ====================
+
+const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  try {
+    const decodedToken = await getAuth().verifyIdToken(token);
+    (req as any).user = decodedToken; // Attach user information to request object
+    next();
+  } catch (error) {
+    console.error("Error verifying token:", error);
+    res.status(401).json({ error: "Unauthorized" });
+  }
+};
+
 // ==================== MESSAGE ENDPOINTS ====================
 
-// GET: Retrieve all messages
-app.get("/messages", async (req: Request, res: Response) => {
+// GET: Retrieve all messages (Protected)
+app.get("/messages", authenticate, async (req: Request, res: Response) => {
+  const userId = (req as any).user.uid; // Retrieve user ID from the decoded token
+  console.log(userId)
   try {
     const messagesRef = db.collection("messages");
-    const snapshot = await messagesRef.orderBy("timestamp", "asc").get();
-
+    const snapshot = await messagesRef
+      .where("userId", "==", userId)
+      .orderBy("timestamp", "asc")
+      .get();
+    console.log(snapshot.size)
+    console.log(snapshot.docs)
     const messages = snapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
     }));
-
+    console.log(messages);
     res.status(200).json(messages);
   } catch (error) {
     console.error("Error retrieving messages:", error);
@@ -48,16 +77,23 @@ app.get("/messages", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Add a new message
-app.post("/messages", async (req: Request, res: Response) => {
+// POST: Add a new message (Protected)
+app.post("/messages", authenticate, async (req, res) => {
   const { message } = req.body;
+  const user = (req as any).user; // Access authenticated user
+
   if (!message) {
-    return res.status(400).json({ error: "Message is required" });
+    res.status(400).json({ error: "Message is required" });
+    return;
   }
 
   try {
     const messagesRef = db.collection("messages");
-    const newMessage = await messagesRef.add({ message, timestamp: new Date() });
+    const newMessage = await messagesRef.add({
+      message,
+      userId: user.uid,
+      timestamp: new Date(),
+    });
     res.status(201).json({ id: newMessage.id, message });
   } catch (error) {
     console.error("Error saving message:", error);
@@ -65,13 +101,15 @@ app.post("/messages", async (req: Request, res: Response) => {
   }
 });
 
+
 // PUT: Update a message
-app.put("/messages/:id", async (req: Request, res: Response) => {
+app.put("/messages/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const { message } = req.body;
 
   if (!message) {
-    return res.status(400).json({ error: "Message content is required" });
+    res.status(400).json({ error: "Message content is required" });
+    return;
   }
 
   try {
@@ -85,7 +123,7 @@ app.put("/messages/:id", async (req: Request, res: Response) => {
 });
 
 // DELETE: Delete a message
-app.delete("/messages/:id", async (req: Request, res: Response) => {
+app.delete("/messages/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
 
   try {
@@ -100,11 +138,15 @@ app.delete("/messages/:id", async (req: Request, res: Response) => {
 
 // ==================== GOAL AND TODO ENDPOINTS ====================
 
-// GET: Retrieve all goals and todos
-app.get("/goals", async (req: Request, res: Response) => {
+// GET: Retrieve all goals and todos (Protected)
+app.get("/goals", authenticate, async (req: Request, res: Response) => {
+  const userId = (req as any).user.uid;
   try {
     const goalsRef = db.collection("goals");
-    const snapshot = await goalsRef.orderBy("timestamp", "asc").get();
+    const snapshot = await goalsRef
+      .where("userId", "==", userId) // Filter goals by user ID
+      .orderBy("timestamp", "asc")
+      .get();
 
     const goals = snapshot.docs.map((doc) => ({
       id: doc.id,
@@ -118,16 +160,25 @@ app.get("/goals", async (req: Request, res: Response) => {
   }
 });
 
-// POST: Add a new goal
-app.post("/goals", async (req: Request, res: Response) => {
+
+// POST: Add a new goal (Protected)
+app.post("/goals", authenticate, async (req: Request, res: Response) => {
   const { goal, todos = [] } = req.body;
+  const userId = (req as any).user.uid;
+
   if (!goal) {
-    return res.status(400).json({ error: "Goal is required" });
+    res.status(400).json({ error: "Goal is required" });
+    return;
   }
 
   try {
     const goalsRef = db.collection("goals");
-    const newGoal = await goalsRef.add({ goal, todos, timestamp: new Date() });
+    const newGoal = await goalsRef.add({
+      goal,
+      todos,
+      userId: userId, // Associate goal with user ID
+      timestamp: new Date(),
+    });
     res.status(201).json({ id: newGoal.id, goal, todos });
   } catch (error) {
     console.error("Error saving goal:", error);
@@ -135,17 +186,39 @@ app.post("/goals", async (req: Request, res: Response) => {
   }
 });
 
-// PUT: Update a goal
-app.put("/goals/:id", async (req: Request, res: Response) => {
+// PUT: Update a goal (Protected)
+app.put("/goals/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const { goal } = req.body;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
 
   if (!goal) {
-    return res.status(400).json({ error: "Goal content is required" });
+    res.status(400).json({ error: "Goal content is required" });
+    return;
   }
 
   try {
     const goalRef = db.collection("goals").doc(id);
+    const goalDoc = await goalRef.get();
+
+    if (!goalDoc.exists) {
+      res.status(404).json({ error: "Goal not found" });
+      return;
+    }
+
+    const goalData = goalDoc.data();
+    if (!goalData) {
+      res.status(500).json({ error: "Goal data is undefined" });
+      return;
+    }
+
+    // Verify that the goal belongs to the authenticated user
+    if (goalData.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+
+    // Update the goal
     await goalRef.update({ goal });
     res.status(200).json({ success: true });
   } catch (error) {
@@ -154,8 +227,9 @@ app.put("/goals/:id", async (req: Request, res: Response) => {
   }
 });
 
+
 // PUT: Update Goal Completion
-app.put("/goals/:id/completion", async (req: Request, res: Response) => {
+app.put("/goals/:id/completion", authenticate, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { completed } = req.body;
 
@@ -171,27 +245,49 @@ app.put("/goals/:id/completion", async (req: Request, res: Response) => {
   }
 });
 
-// DELETE: Delete a goal
-app.delete("/goals/:id", async (req: Request, res: Response) => {
+// DELETE: Delete a goal (Protected)
+app.delete("/goals/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
 
   try {
     const goalRef = db.collection("goals").doc(id);
+    const goalDoc = await goalRef.get();
+
+    // Check if the goal exists
+    if (!goalDoc.exists) {
+      res.status(404).json({ error: "Goal not found" });
+      return;
+    }
+
+    const goalData = goalDoc.data();
+
+    // Validate goal ownership
+    if (!goalData || goalData.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+
+    // Delete the goal
     await goalRef.delete();
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, message: "Goal deleted successfully" });
   } catch (error) {
     console.error("Error deleting goal:", error);
     res.status(500).json({ error: "Failed to delete goal" });
   }
 });
 
-// POST: Add a to-do to a goal
-app.post("/goals/:goalId/todos", async (req: Request, res: Response) => {
+
+
+// POST: Add a to-do to a goal (Protected)
+app.post("/goals/:goalId/todos", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId } = req.params;
   const { text, completed = false } = req.body;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
 
   if (!text) {
-    return res.status(400).json({ error: "To-do text is required" });
+    res.status(400).json({ error: "To-do text is required" });
+    return;
   }
 
   try {
@@ -199,12 +295,24 @@ app.post("/goals/:goalId/todos", async (req: Request, res: Response) => {
     const goalDoc = await goalRef.get();
 
     if (!goalDoc.exists) {
-      return res.status(404).json({ error: "Goal not found" });
+      res.status(404).json({ error: "Goal not found" });
+      return;
     }
 
     const goalData = goalDoc.data();
-    const todos = goalData?.todos || [];
-    const newTodo = { text, completed, id: `${Date.now()}` };
+    if (!goalData) {
+      res.status(500).json({ error: "Goal data is undefined" });
+      return;
+    }
+
+    // Verify that the goal belongs to the authenticated user
+    if (goalData?.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+    
+    const todos = goalData.todos || [];
+    const newTodo = { text, completed, id: `${Date.now()}` }; // Add a unique ID to the new to-do
     todos.push(newTodo);
 
     await goalRef.update({ todos });
@@ -215,13 +323,16 @@ app.post("/goals/:goalId/todos", async (req: Request, res: Response) => {
   }
 });
 
-// PUT: Update a to-do
-app.put("/goals/:goalId/todos/:todoId", async (req: Request, res: Response) => {
+
+// PUT: Update a to-do (Protected)
+app.put("/goals/:goalId/todos/:todoId", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId, todoId } = req.params;
   const { text } = req.body;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
 
   if (!text) {
-    return res.status(400).json({ error: "To-do text is required" });
+    res.status(400).json({ error: "To-do text is required" });
+    return;
   }
 
   try {
@@ -229,12 +340,20 @@ app.put("/goals/:goalId/todos/:todoId", async (req: Request, res: Response) => {
     const goalDoc = await goalRef.get();
 
     if (!goalDoc.exists) {
-      return res.status(404).json({ error: "Goal not found" });
+      res.status(404).json({ error: "Goal not found" });
+      return;
     }
 
     const goalData = goalDoc.data();
     if (!goalData) {
-        return res.status(500).json({ error: "Goal data is undefined" });
+      res.status(500).json({ error: "Goal data is undefined" });
+      return;
+    }
+
+    // Verify that the goal belongs to the authenticated user
+    if (goalData.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
     }
 
     const todos = goalData.todos.map((todo: any) =>
@@ -249,21 +368,31 @@ app.put("/goals/:goalId/todos/:todoId", async (req: Request, res: Response) => {
   }
 });
 
+
 // DELETE: Delete a to-do
-app.delete("/goals/:goalId/todos/:todoId", async (req: Request, res: Response) => {
+app.delete("/goals/:goalId/todos/:todoId", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId, todoId } = req.params;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
 
   try {
     const goalRef = db.collection("goals").doc(goalId);
     const goalDoc = await goalRef.get();
 
     if (!goalDoc.exists) {
-      return res.status(404).json({ error: "Goal not found" });
+      res.status(404).json({ error: "Goal not found" });
+      return;
     }
 
     const goalData = goalDoc.data();
     if (!goalData) {
-        return res.status(500).json({ error: "Goal data is undefined" });
+      res.status(500).json({ error: "Goal data is undefined" });
+      return;
+    }
+
+    // Verify that the goal belongs to the authenticated user
+    if (goalData.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
     }
 
     const todos = goalData.todos.filter((todo: any) => todo.id !== todoId);
@@ -277,24 +406,39 @@ app.delete("/goals/:goalId/todos/:todoId", async (req: Request, res: Response) =
 });
 
 
-// PUT: Update To-do Completion
 
-app.put("/goals/:goalId/todos/:todoId/completion", async (req: Request, res: Response) => {
+// PUT: Update To-do Completion
+app.put("/goals/:goalId/todos/:todoId/completion", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId, todoId } = req.params;
   const { completed } = req.body;
+  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
+
+  if (typeof completed !== "boolean") {
+    res.status(400).json({ error: "Completion status must be a boolean" });
+    return;
+  }
 
   try {
     const goalRef = db.collection("goals").doc(goalId);
     const goalDoc = await goalRef.get();
 
     if (!goalDoc.exists) {
-      return res.status(404).json({ error: "Goal not found" });
+      res.status(404).json({ error: "Goal not found" });
+      return;
     }
 
     const goalData = goalDoc.data();
     if (!goalData) {
-      return res.status(500).json({ error: "Goal data is undefined" });
+      res.status(500).json({ error: "Goal data is undefined" });
+      return;
     }
+
+    // Verify that the goal belongs to the authenticated user
+    if (goalData.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+
     const updatedTodos = goalData.todos.map((todo: any) =>
       todo.id === todoId ? { ...todo, completed } : todo
     );
