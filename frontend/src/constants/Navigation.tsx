@@ -2,12 +2,12 @@
 import Goal from "../pages/Goal";
 import Message from "../pages/Message";
 import Progress from "../pages/Progress";
+import CheckIn from "../pages/Check-In";
+import Events from "../pages/Events";
 import HomePage from "../pages/Home";
 
+
 /**
- * TODO: Modify this constant to point to the URL of your backend.
- * It should be of the format "https://<app-name>.fly.dev/api"
- *
  * Most of the time, the name of your app is the name of the folder you're in
  * right now, and the name of your Git repository.
  * For instance, if that name is "my-app", then you should set this to:
@@ -42,5 +42,15 @@ export const PATHS: {
         link: "/progress",
         label: "Progress",
         element: <Progress />
+    },
+    {
+        link: "/check-in",
+        label: "Check-In",
+        element: <CheckIn />,
+    },
+    {
+        link: "/events",
+        label: "Events",
+        element: <Events />,
     }
 ];

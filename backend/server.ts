@@ -43,7 +43,7 @@ const authenticate = async (req: Request, res: Response, next: NextFunction): Pr
 
   try {
     const decodedToken = await getAuth().verifyIdToken(token);
-    (req as any).user = decodedToken; // Attach user information to request object
+    (req as any).user = decodedToken;
     next();
   } catch (error) {
     console.error("Error verifying token:", error);
@@ -283,7 +283,7 @@ app.delete("/goals/:id", authenticate, async (req: Request, res: Response): Prom
 app.post("/goals/:goalId/todos", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId } = req.params;
   const { text, completed = false } = req.body;
-  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
+  const userId = (req as any).user.uid; 
 
   if (!text) {
     res.status(400).json({ error: "To-do text is required" });
@@ -328,7 +328,7 @@ app.post("/goals/:goalId/todos", authenticate, async (req: Request, res: Respons
 app.put("/goals/:goalId/todos/:todoId", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId, todoId } = req.params;
   const { text } = req.body;
-  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
+  const userId = (req as any).user.uid; 
 
   if (!text) {
     res.status(400).json({ error: "To-do text is required" });
@@ -411,7 +411,7 @@ app.delete("/goals/:goalId/todos/:todoId", authenticate, async (req: Request, re
 app.put("/goals/:goalId/todos/:todoId/completion", authenticate, async (req: Request, res: Response): Promise<void> => {
   const { goalId, todoId } = req.params;
   const { completed } = req.body;
-  const userId = (req as any).user.uid; // Retrieve authenticated user's ID
+  const userId = (req as any).user.uid;
 
   if (typeof completed !== "boolean") {
     res.status(400).json({ error: "Completion status must be a boolean" });
@@ -450,6 +450,203 @@ app.put("/goals/:goalId/todos/:todoId/completion", authenticate, async (req: Req
     res.status(500).json({ error: "Failed to update todo completion" });
   }
 });
+
+// ==================== CheckIn ENDPOINTS ====================
+
+
+// GET: Fetch check-in data for a user
+app.get("/check-in/:userId",authenticate, async (req: Request, res: Response): Promise<void> =>{
+  const { userId } = req.params;
+
+  try {
+    const userRef = db.collection("check-ins").doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      res.status(200).json({ checkInCount: 0, lastCheckIn: null });
+      return 
+    }
+
+    res.status(200).json(userDoc.data());
+  } catch (error) {
+    console.error("Error fetching check-in data:", error);
+    res.status(500).json({ error: "Failed to fetch check-in data" });
+  }
+});
+
+// POST: Handle check-in for a user
+app.post("/check-in/:userId", authenticate, async (req: Request, res: Response): Promise<void> => {
+
+  const { userId } = req.params;
+  const currentDate = new Date().toISOString().split("T")[0]; // Format as YYYY-MM-DD
+
+  try {
+    const userRef = db.collection("check-ins").doc(userId);
+    const userDoc = await userRef.get();
+
+    let checkInData;
+
+    if (userDoc.exists) {
+      const data = userDoc.data();
+      if (data?.lastCheckIn === currentDate) {
+        res.status(200).json({
+          checkInCount: data.checkInCount,
+          lastCheckIn: data.lastCheckIn,
+        }); // Return existing data if already checked in
+        return;
+      }
+
+      checkInData = {
+        checkInCount: (data?.checkInCount || 0) + 1,
+        lastCheckIn: currentDate,
+      };
+    } else {
+      checkInData = {
+        checkInCount: 1,
+        lastCheckIn: currentDate,
+      };
+    }
+
+    await userRef.set(checkInData, { merge: true });
+
+    res.status(200).json(checkInData); // Send updated check-in data
+  } catch (error) {
+    console.error("Error handling check-in:", error);
+    res.status(500).json({ error: "Failed to handle check-in" });
+  }
+});
+
+// ==================== EVENT ENDPOINTS ====================
+
+// POST: Add a new event (Protected)
+app.post("/events", authenticate, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as any).user.uid; // Retrieve the authenticated user's ID
+  const { title, time, location, description } = req.body;
+
+  if (!title || !time) {
+    res.status(400).json({ error: "Event title and time are required" });
+    return;
+  }
+
+  try {
+    const eventsRef = db.collection("events");
+    const newEvent = {
+      title,
+      time,
+      location: location || "",
+      description: description || "",
+      userId,
+      createdAt: new Date(),
+    };
+
+    const addedEvent = await eventsRef.add(newEvent);
+
+    // Return the full event object, including the Firestore ID
+    res.status(201).json({ id: addedEvent.id, ...newEvent });
+  } catch (error) {
+    console.error("Error adding event:", error);
+    res.status(500).json({ error: "Failed to add event" });
+  }
+});
+
+// GET: Retrieve all events for the logged-in user (Protected)
+app.get("/events", authenticate, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as any).user.uid; // Retrieve the authenticated user's ID
+
+  try {
+    const eventsRef = db.collection("events").where("userId", "==", userId).orderBy("createdAt", "asc");
+    const snapshot = await eventsRef.get();
+
+    if (snapshot.empty) {
+      res.status(200).json([]);
+      return;
+    }
+
+    const events = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.status(200).json(events);
+  } catch (error) {
+    console.error("Error retrieving events:", error);
+    res.status(500).json({ error: "Failed to retrieve events" });
+  }
+});
+
+
+// PUT: Update an existing event
+app.put("/events/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as any).user.uid;
+  const { id } = req.params;
+  const { title, time, location, description } = req.body;
+
+  if (!title || !time) {
+    res.status(400).json({ error: "Event title and time are required" });
+    return;
+  }
+
+  try {
+    const eventRef = db.collection("events").doc(id);
+    const eventDoc = await eventRef.get();
+
+    if (!eventDoc.exists) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    const eventData = eventDoc.data();
+    if (eventData?.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+
+    const updatedEvent = {
+      title,
+      time,
+      location: location || "",
+      description: description || "",
+    };
+
+    await eventRef.update(updatedEvent);
+
+    res.status(200).json({ id, ...updatedEvent });
+  } catch (error) {
+    console.error("Error updating event:", error);
+    res.status(500).json({ error: "Failed to update event" });
+  }
+});
+
+// DELETE: Delete an event
+app.delete("/events/:id", authenticate, async (req: Request, res: Response): Promise<void> => {
+  const userId = (req as any).user.uid;
+  const { id } = req.params;
+
+  try {
+    const eventRef = db.collection("events").doc(id);
+    const eventDoc = await eventRef.get();
+
+    if (!eventDoc.exists) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    const eventData = eventDoc.data();
+    if (eventData?.userId !== userId) {
+      res.status(403).json({ error: "Permission denied" });
+      return;
+    }
+
+    await eventRef.delete();
+
+    res.status(200).json({ success: true, message: "Event deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting event:", error);
+    res.status(500).json({ error: "Failed to delete event" });
+  }
+});
+
+
 
 
 
